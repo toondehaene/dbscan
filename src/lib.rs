@@ -58,8 +58,9 @@ where
     T: Copy
         + std::ops::Sub<Output = T>
         + std::ops::SubAssign
-        + ndarray::LinalgScalar
-        + ndarray_linalg::Lapack,
+        // + ndarray::LinalgScalar
+        + ndarray_linalg::Lapack
+        + ndarray_linalg::Scalar<Real = f64>,
     f64: From<T>,
 {
     Model::new(eps, min_points, euclidean_distance).run(input)
@@ -86,8 +87,9 @@ where
     T: Copy
         + std::ops::Sub<Output = T>
         + std::ops::SubAssign
-        + ndarray::LinalgScalar
-        + ndarray_linalg::Lapack,
+        // + ndarray::LinalgScalar
+        + ndarray_linalg::Lapack
+        + ndarray_linalg::Scalar<Real = f64>,
     f64: From<T>,
 {
     /// Create a new `Model` with a set of parameters
@@ -147,29 +149,29 @@ where
     fn range_query(&self, sample: &[T], population: &[Vec<T>]) -> Vec<usize> {
         let population = population.to_vec();
         let shape = (population.len(), population[0].len());
-        let sample_repeated = Array2::from_shape_fn(shape, |(i, j)| sample[j]);
+        let sample_repeated = Array2::from_shape_fn(shape, |(_, j)| sample[j]);
         let population: Array2<T> =
             Array2::from_shape_vec(shape, population.iter().flat_map(|x| x.to_vec()).collect())
                 .unwrap();
 
         // norm_l2 between sample and population
         // diff
-        let diff = &population - &sample_repeated;
-        // l2 norm of every row using linalg.norm_l2
+        let diff : ArrayBase<_,_>= &population - &sample_repeated;
+        // l2 norm of every sample using linalg.norm_l2
         let norms = diff.map_axis(Axis(1), |x| x.norm_l2());
         let idxs = norms
             .iter()
             .enumerate()
-            .filter_map(|(id, &x)| {
-                if self.eps > x {
+            .filter_map(|(id, x)| {
+                if x < &self.eps {
                     return Some(id);
                 }
                 return None;
             })
-            .collect();
+            .collect::<Vec<_>>();
         // filter
 
-        return vec![];
+        return idxs;
 
         // population
         //     .iter()
