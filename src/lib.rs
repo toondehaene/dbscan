@@ -12,6 +12,10 @@
 //! 1996.` for the original paper
 //!
 //! Thanks to the rusty_machine implementation for inspiration
+// extern crate blas_src;
+
+use ndarray::*;
+use ndarray_linalg::*;
 
 use Classification::{Core, Edge, Noise};
 
@@ -51,16 +55,20 @@ pub enum Classification {
 /// * `input` - a Vec<Vec<f64>> of datapoints, organized by row
 pub fn cluster<T>(eps: f64, min_points: usize, input: &Vec<Vec<T>>) -> Vec<Classification>
 where
-    T: Copy,
+    T: Copy
+        + std::ops::Sub<Output = T>
+        + std::ops::SubAssign
+        + ndarray::LinalgScalar
+        + ndarray_linalg::Lapack,
     f64: From<T>,
 {
-    Model::new(eps, min_points).run(input)
+    Model::new(eps, min_points, euclidean_distance).run(input)
 }
 
 /// DBSCAN parameters
 pub struct Model<T>
 where
-    T: Copy,
+    T: Copy + std::ops::Sub<Output = T> + std::ops::SubAssign + ndarray::LinalgScalar,
     f64: From<T>,
 {
     /// Epsilon value - maximum distance between points in a cluster
@@ -75,7 +83,11 @@ where
 
 impl<T> Model<T>
 where
-    T: Copy,
+    T: Copy
+        + std::ops::Sub<Output = T>
+        + std::ops::SubAssign
+        + ndarray::LinalgScalar
+        + ndarray_linalg::Lapack,
     f64: From<T>,
 {
     /// Create a new `Model` with a set of parameters
@@ -83,13 +95,13 @@ where
     /// # Arguments
     /// * `eps` - maximum distance between datapoints within a cluster
     /// * `min_points` - minimum number of datapoints to make a cluster
-    pub fn new(eps: f64, min_points: usize) -> Model<T> {
+    pub fn new(eps: f64, min_points: usize, distance: fn(&[T], &[T]) -> f64) -> Model<T> {
         Model {
             eps,
             mpt: min_points,
             c: Vec::new(),
             v: Vec::new(),
-            distance: euclidean_distance,
+            distance: distance,
         }
     }
 
@@ -133,12 +145,38 @@ where
 
     #[inline]
     fn range_query(&self, sample: &[T], population: &[Vec<T>]) -> Vec<usize> {
-        population
+        let population = population.to_vec();
+        let shape = (population.len(), population[0].len());
+        let sample_repeated = Array2::from_shape_fn(shape, |(i, j)| sample[j]);
+        let population: Array2<T> =
+            Array2::from_shape_vec(shape, population.iter().flat_map(|x| x.to_vec()).collect())
+                .unwrap();
+
+        // norm_l2 between sample and population
+        // diff
+        let diff = &population - &sample_repeated;
+        // l2 norm of every row using linalg.norm_l2
+        let norms = diff.map_axis(Axis(1), |x| x.norm_l2());
+        let idxs = norms
             .iter()
             .enumerate()
-            .filter(|(_, pt)| (self.distance)(sample, pt) < self.eps)
-            .map(|(idx, _)| idx)
-            .collect()
+            .filter_map(|(id, &x)| {
+                if self.eps > x {
+                    return Some(id);
+                }
+                return None;
+            })
+            .collect();
+        // filter
+
+        return vec![];
+
+        // population
+        //     .iter()
+        //     .enumerate()
+        //     .filter(|(_, pt)| (self.distance)(sample, pt) < self.eps)
+        //     .map(|(idx, _)| idx)
+        //     .collect()
     }
 
     /// Run the DBSCAN algorithm on a given population of datapoints.
@@ -211,7 +249,7 @@ mod tests {
 
     #[test]
     fn cluster() {
-        let model = Model::new(1.0, 3);
+        let model = Model::new(1.0, 3, euclidean_distance);
         let inputs = vec![
             vec![1.5, 2.2],
             vec![1.0, 1.1],
@@ -240,7 +278,7 @@ mod tests {
 
     #[test]
     fn cluster_edge() {
-        let model = Model::new(0.253110, 3);
+        let model = Model::new(0.253110, 3, euclidean_distance);
         let inputs = vec![
             vec![
                 0.3311755015020835,
@@ -277,7 +315,7 @@ mod tests {
 
     #[test]
     fn range_query() {
-        let model = Model::new(1.0, 3);
+        let model = Model::new(1.0, 3, euclidean_distance);
         let inputs = vec![vec![1.0, 1.0], vec![1.1, 1.9], vec![3.0, 3.0]];
         let neighbours = model.range_query(&[1.0, 1.0], &inputs);
 
@@ -286,7 +324,7 @@ mod tests {
 
     #[test]
     fn range_query_small_eps() {
-        let model = Model::new(0.01, 3);
+        let model = Model::new(0.01, 3, euclidean_distance);
         let inputs = vec![vec![1.0, 1.0], vec![1.1, 1.9], vec![3.0, 3.0]];
         let neighbours = model.range_query(&[1.0, 1.0], &inputs);
 
@@ -301,7 +339,8 @@ mod tests {
 
     #[test]
     fn range_query_custom_distance() {
-        let model = Model::new(1.0, 3).set_distance_fn::<fn(&[f64], &[f64]) -> f64>(taxicab);
+        let model = Model::new(1.0, 3, euclidean_distance)
+            .set_distance_fn::<fn(&[f64], &[f64]) -> f64>(taxicab);
         let inputs = vec![vec![1.0, 1.0], vec![1.1, 1.9], vec![3.0, 3.0]];
         let neighbours = model.range_query(&[1.0, 1.0], &inputs);
         assert_eq!(neighbours.len(), 1)

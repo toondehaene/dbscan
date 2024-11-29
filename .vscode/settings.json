@@ -1,0 +1,10 @@
+{
+    "workbench.colorCustomizations": {
+        "sideBar.border": "#222",
+        "editorGroup.border": "#222",
+        "editorIndentGuide.background1": "#222",
+        "editorIndentGuide.activeBackground1": "#333",
+        "minimap.background": "#00000010",
+        "scrollbar.shadow": "#00000010"
+    }
+}

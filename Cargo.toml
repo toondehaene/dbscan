@@ -7,4 +7,7 @@ description = "Dependency free implementation of DBSCAN clustering "
 repository = "https://github.com/lazear/dbscan.git"
 homepage = "https://github.com/lazear/dbscan"
 
+edition = "2021"
 [dependencies]
+ndarray = { version = "0.14", features = [] } 
+ndarray-linalg = { version = "0.13", features = ["openblas-system"] }
