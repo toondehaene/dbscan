@@ -23,10 +23,7 @@ use Classification::{Core, Edge, Noise};
 ///
 /// This is the default distance function
 #[inline]
-pub fn euclidean_distance<T>(a: &[T], b: &[T]) -> f64
-where
-    f64: From<T>,
-    T: Copy,
+pub fn euclidean_distance(a: &[f64], b: &[f64]) -> f64
 {
     a.iter()
         .zip(b.iter())
@@ -53,70 +50,47 @@ pub enum Classification {
 /// * `eps` - maximum distance between datapoints within a cluster
 /// * `min_points` - minimum number of datapoints to make a cluster
 /// * `input` - a Vec<Vec<f64>> of datapoints, organized by row
-pub fn cluster<T>(eps: f64, min_points: usize, input: &Vec<Vec<T>>) -> Vec<Classification>
-where
-    T: Copy
-        + std::ops::Sub<Output = T>
-        + std::ops::SubAssign
-        // + ndarray::LinalgScalar
-        + ndarray_linalg::Lapack
-        + ndarray_linalg::Scalar<Real = f64>,
-    f64: From<T>,
+pub fn cluster(eps: f64, min_points: usize, input: &Vec<Vec<f64>>) -> Vec<Classification>
 {
-    Model::new(eps, min_points, euclidean_distance).run(input)
+    Model::new(eps, min_points).run(input)
 }
 
 /// DBSCAN parameters
-pub struct Model<T>
-where
-    T: Copy + std::ops::Sub<Output = T> + std::ops::SubAssign + ndarray::LinalgScalar,
-    f64: From<T>,
+pub struct Model
 {
     /// Epsilon value - maximum distance between points in a cluster
     pub eps: f64,
     /// Minimum number of points in a cluster
     pub mpt: usize,
-
-    distance: fn(&[T], &[T]) -> f64,
     c: Vec<Classification>,
     v: Vec<bool>,
 }
 
-impl<T> Model<T>
-where
-    T: Copy
-        + std::ops::Sub<Output = T>
-        + std::ops::SubAssign
-        // + ndarray::LinalgScalar
-        + ndarray_linalg::Lapack
-        + ndarray_linalg::Scalar<Real = f64>,
-    f64: From<T>,
+impl Model
 {
     /// Create a new `Model` with a set of parameters
     ///
     /// # Arguments
     /// * `eps` - maximum distance between datapoints within a cluster
     /// * `min_points` - minimum number of datapoints to make a cluster
-    pub fn new(eps: f64, min_points: usize, distance: fn(&[T], &[T]) -> f64) -> Model<T> {
+    pub fn new(eps: f64, min_points: usize,) -> Model {
         Model {
             eps,
             mpt: min_points,
             c: Vec::new(),
             v: Vec::new(),
-            distance: distance,
         }
     }
 
     /// Change the function used to calculate distance between points.
     /// Euclidean distance is the default measurement used.
-    pub fn set_distance_fn<F>(mut self, func: fn(&[T], &[T]) -> f64) -> Model<T> {
-        self.distance = func;
+    pub fn set_distance_fn<F>(mut self, func: fn(&[f64], &[f64]) -> f64) -> Model {
         self
     }
 
     fn expand_cluster(
         &mut self,
-        population: &[Vec<T>],
+        population: &[Vec<f64>],
         queue: &mut Vec<usize>,
         cluster: usize,
     ) -> bool {
@@ -146,11 +120,11 @@ where
     }
 
     #[inline]
-    fn range_query(&self, sample: &[T], population: &[Vec<T>]) -> Vec<usize> {
+    fn range_query(&self, sample: &[f64], population: &[Vec<f64>]) -> Vec<usize> {
         let population = population.to_vec();
         let shape = (population.len(), population[0].len());
         let sample_repeated = Array2::from_shape_fn(shape, |(_, j)| sample[j]);
-        let population: Array2<T> =
+        let population: Array2<f64> =
             Array2::from_shape_vec(shape, population.iter().flat_map(|x| x.to_vec()).collect())
                 .unwrap();
 
@@ -221,7 +195,7 @@ where
     ///     ]
     /// );
     /// ```
-    pub fn run(mut self, population: &Vec<Vec<T>>) -> Vec<Classification> {
+    pub fn run(mut self, population: &Vec<Vec<f64>>) -> Vec<Classification> {
         self.c = vec![Noise; population.len()];
         self.v = vec![false; population.len()];
 
@@ -251,7 +225,7 @@ mod tests {
 
     #[test]
     fn cluster() {
-        let model = Model::new(1.0, 3, euclidean_distance);
+        let model = Model::new(1.0, 3);
         let inputs = vec![
             vec![1.5, 2.2],
             vec![1.0, 1.1],
@@ -280,7 +254,7 @@ mod tests {
 
     #[test]
     fn cluster_edge() {
-        let model = Model::new(0.253110, 3, euclidean_distance);
+        let model = Model::new(0.253110, 3);
         let inputs = vec![
             vec![
                 0.3311755015020835,
@@ -317,7 +291,7 @@ mod tests {
 
     #[test]
     fn range_query() {
-        let model = Model::new(1.0, 3, euclidean_distance);
+        let model = Model::new(1.0, 3);
         let inputs = vec![vec![1.0, 1.0], vec![1.1, 1.9], vec![3.0, 3.0]];
         let neighbours = model.range_query(&[1.0, 1.0], &inputs);
 
@@ -326,7 +300,7 @@ mod tests {
 
     #[test]
     fn range_query_small_eps() {
-        let model = Model::new(0.01, 3, euclidean_distance);
+        let model = Model::new(0.01, 3);
         let inputs = vec![vec![1.0, 1.0], vec![1.1, 1.9], vec![3.0, 3.0]];
         let neighbours = model.range_query(&[1.0, 1.0], &inputs);
 
@@ -341,7 +315,7 @@ mod tests {
 
     #[test]
     fn range_query_custom_distance() {
-        let model = Model::new(1.0, 3, euclidean_distance)
+        let model = Model::new(1.0, 3)
             .set_distance_fn::<fn(&[f64], &[f64]) -> f64>(taxicab);
         let inputs = vec![vec![1.0, 1.0], vec![1.1, 1.9], vec![3.0, 3.0]];
         let neighbours = model.range_query(&[1.0, 1.0], &inputs);
